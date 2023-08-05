@@ -12,6 +12,8 @@ import lol.nebula.util.math.RotationUtils;
 import net.minecraft.block.Block;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.entity.RenderManager;
+import net.minecraft.init.Blocks;
+import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.client.C07PacketPlayerDigging;
 import net.minecraft.util.AxisAlignedBB;
@@ -28,8 +30,7 @@ import static lol.nebula.util.player.InventoryUtils.is127;
 import static lol.nebula.util.player.InventoryUtils.is32k;
 import static lol.nebula.util.render.ColorUtils.withAlpha;
 import static lol.nebula.util.render.RenderUtils.*;
-import static lol.nebula.util.world.WorldUtils.getBlock;
-import static lol.nebula.util.world.WorldUtils.isReplaceable;
+import static lol.nebula.util.world.WorldUtils.*;
 import static org.lwjgl.opengl.GL11.*;
 
 /**
@@ -38,7 +39,8 @@ import static org.lwjgl.opengl.GL11.*;
  */
 public class Nuker extends Module {
 
-    public static Block targetBlock;
+    public static Block targetBlock = Blocks.obsidian;
+    public static Block replaceBlock = Blocks.red_mushroom_block;
 
     private final Setting<Mode> mode = new Setting<>(Mode.FLAT, "Mode");
     private final Setting<Integer> yOffset = new Setting<>(
@@ -152,6 +154,25 @@ public class Nuker extends Module {
                         mc.playerController.onPlayerDestroyBlock(x, y, z, face);
                     }
                 }
+                int slotSwap = -1;
+                for (int i = 0; i < 9; ++i) {
+                    ItemStack stack = mc.thePlayer.inventory.getStackInSlot(i);
+                    if (stack == null || !(stack.getItem() instanceof ItemBlock)) continue;
+
+                    if (((ItemBlock) stack.getItem()).field_150939_a == replaceBlock) {
+                        slotSwap = i;
+                        break;
+                    }
+                }
+
+                if (slotSwap == -1) return;
+                mc.thePlayer.inventory.currentItem = slotSwap;
+                boolean result = mc.playerController.onPlayerRightClick(mc.thePlayer,
+                        mc.theWorld,
+                        mc.thePlayer.getHeldItem(),
+                        x, y-1, z, face,
+                        getHitVec(x, y-1, z, EnumFacing.UP));
+                if (result) mc.thePlayer.swingItem();
             }
         }
     }
