@@ -40,7 +40,7 @@ import static org.lwjgl.opengl.GL11.*;
 public class Nuker extends Module {
 
     public static Block targetBlock = Blocks.obsidian;
-    public static Block replaceBlock = Blocks.red_mushroom_block;
+    public static Block replaceBlock = Blocks.melon_block;
 
     private final Setting<Mode> mode = new Setting<>(Mode.FLAT, "Mode");
     private final Setting<Integer> yOffset = new Setting<>(
@@ -52,6 +52,7 @@ public class Nuker extends Module {
     private final Setting<Boolean> render = new Setting<>(true, "Render");
 
     private final Queue<Vec3> breakPositions = new ConcurrentLinkedQueue<>();
+    private final Queue<Position> replacePositions = new ConcurrentLinkedQueue<>();
     private int x, y, z;
     private boolean breaking;
 
@@ -63,6 +64,7 @@ public class Nuker extends Module {
     public void onDisable() {
         super.onDisable();
 
+        replacePositions.clear();
         breakPositions.clear();
 
         if (breaking && (x != -1 && y != -1 && z != -1)) {
@@ -106,6 +108,30 @@ public class Nuker extends Module {
 
     @Listener
     public void onUpdate(EventUpdate event) {
+        if (!replacePositions.isEmpty()) {
+            breaking = false;
+            Position first = replacePositions.poll();
+            if (first != null) {
+
+                int slot = -1;
+                for (int i = 0; i < 9; ++i) {
+                    ItemStack stack = mc.thePlayer.inventory.getStackInSlot(i);
+                    if (stack == null || !(stack.getItem() instanceof ItemBlock)) continue;
+
+                    if (((ItemBlock) stack.getItem()).field_150939_a == replaceBlock) {
+                        slot = i;
+                        break;
+                    }
+                }
+
+                if (slot != -1 || Nebula.getInstance().getInventory().getServerSlot() == slot) {
+                    Nebula.getInstance().getInventory().setSlot(slot);
+                }
+
+                place(new Position(first.getX(), first.getY(), first.getZ()));
+                return;
+            }
+        }
         calcBreakPositions();
         if (breakPositions.isEmpty()) return;
 
@@ -126,7 +152,7 @@ public class Nuker extends Module {
                 Nebula.getInstance().getInventory().sync();
                 return;
             }
-
+            if(getBlock(x, y, z) == replaceBlock) {return;}
             int slot = AutoTool.getBestSlotFor(getBlock(x, y, z));
             if (slot != -1 || Nebula.getInstance().getInventory().getServerSlot() == slot) {
                 Nebula.getInstance().getInventory().setSlot(slot);
@@ -154,27 +180,36 @@ public class Nuker extends Module {
                         mc.playerController.onPlayerDestroyBlock(x, y, z, face);
                     }
                 }
-                int slotSwap = -1;
-                for (int i = 0; i < 9; ++i) {
-                    ItemStack stack = mc.thePlayer.inventory.getStackInSlot(i);
-                    if (stack == null || !(stack.getItem() instanceof ItemBlock)) continue;
-
-                    if (((ItemBlock) stack.getItem()).field_150939_a == replaceBlock) {
-                        slotSwap = i;
-                        break;
-                    }
+                if (mode.getValue() == Mode.BLOCK) {
+                    replacePositions.add(new Position(x,y,z));
                 }
-
-                if (slotSwap == -1) return;
-                mc.thePlayer.inventory.currentItem = slotSwap;
-                boolean result = mc.playerController.onPlayerRightClick(mc.thePlayer,
-                        mc.theWorld,
-                        mc.thePlayer.getHeldItem(),
-                        x, y-1, z, face,
-                        getHitVec(x, y-1, z, EnumFacing.UP));
-                if (result) mc.thePlayer.swingItem();
             }
         }
+    }
+
+    private void place(Position next) {
+        EnumFacing face = null;
+        for (EnumFacing facing : EnumFacing.values()) {
+            Position n = next.add(facing.getFrontOffsetX(), facing.getFrontOffsetY(), facing.getFrontOffsetZ());
+            if (!isReplaceable(n.getX(), n.getY(), n.getZ())) {
+                next = n;
+                face = getOpposite(facing);
+                break;
+            }
+        }
+
+        if (face == null) return;
+
+
+        if (rotate.getValue()) Nebula.getInstance().getRotations().spoof(10, RotationUtils.toBlock(
+                next.getX(), next.getY(), next.getZ(), face));
+
+        boolean result = mc.playerController.onPlayerRightClick(mc.thePlayer,
+                mc.theWorld,
+                mc.thePlayer.getHeldItem(),
+                next.getX(), next.getY(), next.getZ(), face.getOrder_a(),
+                getHitVec(next.getX(), next.getY(), next.getZ(), face));
+        if (result) mc.thePlayer.swingItem();
     }
 
     private void calcBreakPositions() {
@@ -229,5 +264,39 @@ public class Nuker extends Module {
 
     public enum Mode {
         FLAT, SPHERE, BLOCK
+    }
+
+
+    private static class Position {
+        private final int x, y, z;
+
+        public Position(int x, int y, int z) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+
+        public int getX() {
+            return x;
+        }
+
+        public int getY() {
+            return y;
+        }
+
+        public int getZ() {
+            return z;
+        }
+
+        public Position add(int x, int y, int z) {
+            return new Position(this.x + x, this.y + y, this.z + z);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (!(obj instanceof Position)) return false;
+            Position pos = (Position) obj;
+            return pos.getX() == x && pos.getY() == y && pos.getZ() == z;
+        }
     }
 }
